@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import React, { useState, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   ChevronRight, 
   ChevronLeft, 
@@ -17,17 +17,6 @@ import {
 } from 'lucide-react';
 
 type Step = 1 | 2 | 3 | 4 | 5 | 6;
-
-interface FormData {
-  nombre: string;
-  empresa: string;
-  email: string;
-  negocio: string;
-  administracionActual: string;
-  otroMetodo: string;
-  problemas: string[];
-  objetivo: string;
-}
 
 const PROBLEMAS_OPTIONS = [
   "Desorden financiero",
@@ -47,40 +36,29 @@ const ADMIN_OPTIONS = [
 
 export default function OnboardingForm() {
   const [step, setStep] = useState<Step>(1);
-  console.log("OnboardingForm rendered, current step:", step);
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showFileUpload, setShowFileUpload] = useState<boolean | null>(null);
-  const [formData, setFormData] = useState<FormData>({
+  
+  const [formData, setFormData] = useState({
     nombre: '',
     empresa: '',
     email: '',
     negocio: '',
     administracionActual: '',
     otroMetodo: '',
-    problemas: [],
+    problemas: [] as string[],
+    problemaDetalle: '',
     objetivo: ''
   });
+
   const [archivo, setArchivo] = useState<File | null>(null);
-  const [problema, setProblema] = useState("");
-  const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    console.log("STEP CHANGE detected:", step);
-  }, [step]);
-
-  const validateStep = (currentStep: Step): boolean => {
-    return true; // Validación relajada para pruebas
-  };
-
   const nextStep = () => {
-    console.log("nextStep called, current step:", step);
-    if (validateStep(step)) {
-      setStep((prev) => (prev + 1) as Step);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
+    setStep((prev) => (prev + 1) as Step);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const prevStep = () => {
@@ -97,68 +75,40 @@ export default function OnboardingForm() {
     }));
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setArchivo(file);
-    }
-  };
-
-  const removeFile = () => {
-    setArchivo(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-  };
-
-  const progress = (step / 6) * 100;
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (step !== 6) return;
-
     setLoading(true);
     setError(null);
 
-    // --- ARREGLO DE PROBLEMAS ---
-    const problemasSeleccionados = formData.problemas.join(", ");
-    const detalleProblema = problema ? `\nDetalle extra: ${problema}` : "";
-    const problemasCompletos = `${problemasSeleccionados}${detalleProblema}`;
-
-    const { nombre, empresa, email, negocio: actividad, administracionActual, otroMetodo, objetivo: mejora } = formData;
-    const metodoAdmin = administracionActual + (otroMetodo ? `: ${otroMetodo}` : '');
-
-    const formDataToSubmit = new FormData();
-    formDataToSubmit.append("nombre", nombre);
-    formDataToSubmit.append("empresa", empresa);
-    formDataToSubmit.append("email", email);
-    formDataToSubmit.append("actividad", actividad);
-    formDataToSubmit.append("metodoAdmin", metodoAdmin);
-    formDataToSubmit.append("problema", problemasCompletos); // Ahora manda todo junto (Checks + Texto)
-    formDataToSubmit.append("mejora", mejora);
-
-    if (archivo) {
-      formDataToSubmit.append("files", archivo);
-    }
-
     try {
-      const res = await fetch(
-        "https://backend-form-zbwy.vercel.app/upload",
-        {
-          method: "POST",
-          body: formDataToSubmit
-        }
-      );
+      const data = new FormData();
+      data.append("nombre", formData.nombre);
+      data.append("empresa", formData.empresa);
+      data.append("email", formData.email);
+      data.append("actividad", formData.negocio);
+      
+      const metodoFinal = formData.administracionActual === 'Otro' 
+        ? `Otro: ${formData.otroMetodo}` 
+        : formData.administracionActual;
+      data.append("metodoAdmin", metodoFinal);
 
-      if (!res.ok) {
-        const errorText = await res.text();
-        throw new Error(`Error ${res.status}: ${errorText || res.statusText}`);
+      const problemasTexto = `${formData.problemas.join(", ")} ${formData.problemaDetalle ? '| Detalle: ' + formData.problemaDetalle : ''}`;
+      data.append("problema", problemasTexto);
+      data.append("mejora", formData.objetivo);
+
+      if (archivo) {
+        data.append("files", archivo); 
       }
 
+      const response = await fetch("https://backend-form-zbwy.vercel.app/upload", {
+        method: "POST",
+        body: data,
+      });
+
+      if (!response.ok) throw new Error("Error en la respuesta del servidor");
       setSuccess(true);
     } catch (err) {
-      console.error("Error submitting form:", err);
-      setError(err instanceof Error ? err.message : "Error desconocido al enviar el formulario");
+      setError("Error al enviar. Verifica el tamaño del archivo o tu conexión.");
     } finally {
       setLoading(false);
     }
@@ -166,181 +116,98 @@ export default function OnboardingForm() {
 
   if (success) {
     return (
-      <div className="min-h-screen bg-[#FDFCFB] flex items-center justify-center p-6">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="max-w-md w-full text-center space-y-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-emerald-50 text-emerald-600 rounded-full mb-4"><CheckCircle2 size={32} /></div>
-          <div className="space-y-4">
-            <h2 className="text-3xl md:text-4xl font-semibold text-stone-900 tracking-tight leading-tight">Gracias por completar el diagnóstico administrativo</h2>
-            <p className="text-stone-500 text-lg leading-relaxed">En las próximas 24 horas revisaremos tu información y nos pondremos en contacto.</p>
-          </div>
-          <div className="pt-8 border-t border-stone-100"><p className="text-stone-400 font-serif italic text-lg">— Gerónimo adm</p></div>
-          <button type="button" onClick={() => window.location.reload()} className="mt-8 text-stone-400 hover:text-stone-900 transition-colors text-xs font-bold tracking-widest uppercase">Volver al inicio</button>
+      <div className="min-h-screen bg-[#FDFCFB] flex items-center justify-center p-6 text-center">
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-md italic">
+          <CheckCircle2 size={64} className="mx-auto text-emerald-500 mb-6" />
+          <h2 className="text-3xl font-bold mb-4 text-stone-900">¡Diagnóstico Enviado!</h2>
+          <p className="text-stone-600 mb-8">Gracias por tu tiempo, Gerónimo se pondrá en contacto pronto.</p>
+          <button onClick={() => window.location.reload()} className="text-stone-400 font-bold uppercase tracking-widest text-xs">Volver al inicio</button>
         </motion.div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#FDFCFB] text-stone-900 font-sans selection:bg-stone-200">
-      <div className="fixed top-0 left-0 w-full h-1.5 bg-stone-100 z-50">
-        <motion.div className="h-full bg-stone-900" initial={{ width: 0 }} animate={{ width: `${progress}%` }} transition={{ duration: 0.5, ease: "easeInOut" }} />
-      </div>
+    <div className="min-h-screen bg-[#FDFCFB] text-stone-900 font-sans p-6 md:p-20">
+      <div className="max-w-2xl mx-auto italic">
+        <div className="mb-12 text-center">
+          <h1 className="text-4xl font-semibold tracking-tight">Diagnóstico Administrativo Inicial</h1>
+          <p className="text-stone-500 mt-2">Paso {step} de 6</p>
+        </div>
 
-      <main className="max-w-2xl mx-auto px-6 py-20 md:py-32">
-        <header className="mb-16 space-y-8 text-center">
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }} className="flex flex-col items-center">
-            <span className="text-xs font-bold tracking-widest uppercase text-stone-400 mb-3 block"><span translate="no">Gerónimo adm</span></span>
-            <h1 className="text-4xl md:text-5xl font-semibold tracking-tight text-stone-900">Diagnóstico administrativo inicial</h1>
-            <p className="text-lg text-stone-500 max-w-lg leading-relaxed mt-4 mx-auto">Este breve formulario nos ayuda a entender tu empresa y detectar oportunidades de mejora administrativa.</p>
-          </motion.div>
-        </header>
-
-        <form onSubmit={handleSubmit} onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }} className="space-y-12">
-          <div className="fixed bottom-4 right-4 bg-stone-900 text-white px-4 py-2 rounded-full text-sm font-mono z-50 opacity-90 shadow-2xl border border-white/20">Current step: {step}</div>
-          
+        <form onSubmit={handleSubmit} className="space-y-8">
           <AnimatePresence mode="wait">
             {step === 1 && (
-              <motion.section key="step1" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-8">
-                <div className="space-y-6">
-                  <h3 className="text-xl font-medium text-stone-800 flex items-center gap-2"><User size={20} className="text-stone-400" /> Información básica</h3>
-                  <div className="space-y-4">
-                    <div className="group">
-                      <label className="block text-sm font-medium text-stone-500 mb-1.5">Nombre</label>
-                      <input type="text" value={formData.nombre} onChange={(e) => setFormData({...formData, nombre: e.target.value})} className={`w-full bg-white border ${errors.nombre ? 'border-red-300' : 'border-stone-200'} rounded-lg px-4 py-3 outline-none focus:border-stone-900 transition-all`} placeholder="Tu nombre completo" />
-                    </div>
-                    <div className="group">
-                      <label className="block text-sm font-medium text-stone-500 mb-1.5">Empresa o emprendimiento</label>
-                      <div className="relative">
-                        <Building2 size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-300" />
-                        <input type="text" value={formData.empresa} onChange={(e) => setFormData({...formData, empresa: e.target.value})} className="w-full bg-white border border-stone-200 rounded-lg pl-11 pr-4 py-3 outline-none focus:border-stone-900 transition-all" placeholder="Nombre de tu negocio" />
-                      </div>
-                    </div>
-                    <div className="group">
-                      <label className="block text-sm font-medium text-stone-500 mb-1.5">Email</label>
-                      <div className="relative">
-                        <Mail size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-300" />
-                        <input type="email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} className="w-full bg-white border border-stone-200 rounded-lg pl-11 pr-4 py-3 outline-none focus:border-stone-900 transition-all" placeholder="hola@tuempresa.com" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </motion.section>
+              <motion.div key="s1" initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: -20, opacity: 0 }} className="space-y-4">
+                <input required type="text" placeholder="Tu nombre completo" className="w-full p-4 border rounded-xl" value={formData.nombre} onChange={e => setFormData({...formData, nombre: e.target.value})} />
+                <input required type="text" placeholder="Nombre de tu empresa" className="w-full p-4 border rounded-xl" value={formData.empresa} onChange={e => setFormData({...formData, empresa: e.target.value})} />
+                <input required type="email" placeholder="Email de contacto" className="w-full p-4 border rounded-xl" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
+              </motion.div>
             )}
 
             {step === 2 && (
-              <motion.section key="step2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-8">
-                <div className="space-y-6">
-                  <h3 className="text-xl font-medium text-stone-800 flex items-center gap-2"><Briefcase size={20} className="text-stone-400" /> Tu Negocio</h3>
-                  <div className="group">
-                    <label className="block text-sm font-medium text-stone-500 mb-3">¿A qué se dedica tu negocio?</label>
-                    <textarea value={formData.negocio} onChange={(e) => setFormData({...formData, negocio: e.target.value})} rows={4} className="w-full bg-white border border-stone-200 rounded-lg px-4 py-3 outline-none focus:border-stone-900 transition-all resize-none" placeholder="Ej: Agencia de marketing digital, local de indumentaria..." />
-                  </div>
-                </div>
-              </motion.section>
+              <motion.div key="s2" initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }}>
+                <textarea required className="w-full p-4 border rounded-xl h-40 resize-none" placeholder="¿A qué se dedica tu negocio?" value={formData.negocio} onChange={e => setFormData({...formData, negocio: e.target.value})} />
+              </motion.div>
             )}
 
             {step === 3 && (
-              <motion.section key="step3" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-8">
-                <div className="space-y-6">
-                  <h3 className="text-xl font-medium text-stone-800">Administración actual</h3>
-                  <div className="grid gap-3">
-                    {ADMIN_OPTIONS.map((option) => (
-                      <label key={option} className={`flex items-center p-4 rounded-xl border cursor-pointer transition-all ${formData.administracionActual === option ? 'border-stone-900 bg-stone-50 ring-1 ring-stone-900' : 'border-stone-200 hover:border-stone-300 bg-white'}`}>
-                        <input type="radio" className="hidden" checked={formData.administracionActual === option} onChange={() => setFormData({...formData, administracionActual: option})} />
-                        <div className={`w-4 h-4 rounded-full border flex items-center justify-center mr-3 ${formData.administracionActual === option ? 'border-stone-900' : 'border-stone-300'}`}>{formData.administracionActual === option && <div className="w-2 h-2 rounded-full bg-stone-900" />}</div>
-                        <span className="text-sm font-medium text-stone-700">{option}</span>
-                      </label>
-                    ))}
-                  </div>
-                  {formData.administracionActual === 'Otro' && (
-                    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="pt-4 space-y-3">
-                      <label className="block text-sm font-medium text-stone-500">Contanos qué sistema o método utilizás</label>
-                      <textarea value={formData.otroMetodo} onChange={(e) => setFormData({...formData, otroMetodo: e.target.value})} rows={3} className="w-full bg-white border border-stone-200 rounded-lg px-4 py-3 outline-none focus:border-stone-900 transition-all resize-none" />
-                    </motion.div>
-                  )}
-                </div>
-              </motion.section>
+              <motion.div key="s3" initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} className="space-y-3">
+                {ADMIN_OPTIONS.map(opt => (
+                  <button key={opt} type="button" onClick={() => setFormData({...formData, administracionActual: opt})} className={`w-full p-4 border rounded-xl text-left ${formData.administracionActual === opt ? 'bg-stone-900 text-white' : 'bg-white'}`}>{opt}</button>
+                ))}
+                {formData.administracionActual === 'Otro' && (
+                  <input type="text" placeholder="Especificar método" className="w-full p-4 border rounded-xl mt-2" value={formData.otroMetodo} onChange={e => setFormData({...formData, otroMetodo: e.target.value})} />
+                )}
+              </motion.div>
             )}
 
             {step === 4 && (
-              <motion.section key="step4" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-8">
-                <div className="space-y-6">
-                  <h3 className="text-xl font-medium text-stone-800">Problema principal</h3>
-                  <div className="space-y-4">
-                    <label className="block text-sm font-medium text-stone-500">Seleccioná los desafíos que enfrentás:</label>
-                    <div className="flex flex-wrap gap-2">
-                      {PROBLEMAS_OPTIONS.map((option) => (
-                        <button key={option} type="button" onClick={() => toggleProblema(option)} className={`px-4 py-2 rounded-full text-sm font-medium transition-all border ${formData.problemas.includes(option) ? 'bg-stone-900 text-white border-stone-900 shadow-lg shadow-stone-900/10' : 'bg-white text-stone-600 border-stone-200 hover:border-stone-400'}`}>{option}</button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="group pt-4">
-                    <label className="block text-sm font-medium text-stone-500 mb-3">Contanos un poco más:</label>
-                    <textarea value={problema} onChange={(e) => setProblema(e.target.value)} rows={4} className="w-full bg-white border border-stone-200 rounded-lg px-4 py-3 outline-none focus:border-stone-900 transition-all resize-none" placeholder="Describí tu problema principal..." />
-                  </div>
+              <motion.div key="s4" initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} className="space-y-6">
+                <div className="flex flex-wrap gap-2">
+                  {PROBLEMAS_OPTIONS.map(opt => (
+                    <button key={opt} type="button" onClick={() => toggleProblema(opt)} className={`px-4 py-2 border rounded-full text-sm ${formData.problemas.includes(opt) ? 'bg-stone-900 text-white' : 'bg-white'}`}>{opt}</button>
+                  ))}
                 </div>
-              </motion.section>
+                <textarea className="w-full p-4 border rounded-xl h-32" placeholder="Más detalles..." value={formData.problemaDetalle} onChange={e => setFormData({...formData, problemaDetalle: e.target.value})} />
+              </motion.div>
             )}
 
             {step === 5 && (
-              <motion.section key="step5" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-8">
-                <div className="space-y-6">
-                  <h3 className="text-xl font-medium text-stone-800 flex items-center gap-2"><Target size={20} className="text-stone-400" /> Objetivo</h3>
-                  <div className="group">
-                    <label className="block text-sm font-medium text-stone-500 mb-3">¿Qué te gustaría mejorar primero?</label>
-                    <textarea value={formData.objetivo} onChange={(e) => setFormData({...formData, objetivo: e.target.value})} rows={4} className="w-full bg-white border border-stone-200 rounded-lg px-4 py-3 outline-none focus:border-stone-900 transition-all resize-none" placeholder="Ej: Automatizar mi facturación..." />
-                  </div>
-                </div>
-              </motion.section>
+              <motion.div key="s5" initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }}>
+                <textarea required className="w-full p-4 border rounded-xl h-40 resize-none" placeholder="¿Qué te gustaría mejorar?" value={formData.objetivo} onChange={e => setFormData({...formData, objetivo: e.target.value})} />
+              </motion.div>
             )}
 
             {step === 6 && (
-              <motion.section key="step6" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-8">
-                <div className="space-y-8">
-                  <div className="space-y-4">
-                    <h3 className="text-xl font-medium text-stone-800 flex items-start gap-2 leading-tight"><FileUp size={20} className="text-stone-400 mt-1 shrink-0" /> ¿Querés adjuntar algún archivo?</h3>
-                    <div className="flex gap-3">
-                      <button type="button" onClick={() => setShowFileUpload(true)} className={`flex-1 py-3 px-4 rounded-xl border font-medium transition-all ${showFileUpload === true ? 'border-stone-900 bg-stone-50 ring-1 ring-stone-900 text-stone-900' : 'border-stone-200 bg-white text-stone-600'}`}>Sí</button>
-                      <button type="button" onClick={() => { setShowFileUpload(false); removeFile(); }} className={`flex-1 py-3 px-4 rounded-xl border font-medium transition-all ${showFileUpload === false ? 'border-stone-900 bg-stone-50 ring-1 ring-stone-900 text-stone-900' : 'border-stone-200 bg-white text-stone-600'}`}>No</button>
-                    </div>
-                  </div>
-                  {showFileUpload === true && (
-                    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="overflow-hidden space-y-4">
-                      <label htmlFor="archivo-upload" className="block border-2 border-dashed border-stone-200 rounded-2xl p-8 text-center hover:bg-stone-50/50 transition-all cursor-pointer group">
-                        <input id="archivo-upload" type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
-                        <Upload size={20} className="mx-auto text-stone-400 mb-3" />
-                        <p className="text-sm font-medium text-stone-700">Hacé click para seleccionar un archivo</p>
-                      </label>
-                      {archivo && (
-                        <div className="flex items-center justify-between p-3 bg-white border border-stone-100 rounded-lg shadow-sm">
-                          <div className="flex items-center gap-3"><FileText size={18} className="text-stone-400" /> <span className="text-sm text-stone-600 truncate max-w-[200px]">{archivo.name}</span></div>
-                          <button type="button" onClick={removeFile} className="text-stone-300 hover:text-red-500"><X size={18} /></button>
-                        </div>
-                      )}
-                    </motion.div>
-                  )}
+              <motion.div key="s6" initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} className="space-y-6 text-center">
+                <p className="font-medium text-lg italic">¿Adjuntar un archivo?</p>
+                <div className="flex gap-4">
+                  <button type="button" onClick={() => setShowFileUpload(true)} className={`flex-1 p-4 border rounded-xl ${showFileUpload === true ? 'bg-stone-100' : ''}`}>Sí</button>
+                  <button type="button" onClick={() => {setShowFileUpload(false); setArchivo(null);}} className={`flex-1 p-4 border rounded-xl ${showFileUpload === false ? 'bg-stone-100' : ''}`}>No</button>
                 </div>
-              </motion.section>
+                {showFileUpload && (
+                  <div className="mt-6 p-10 border-2 border-dashed rounded-2xl bg-stone-50">
+                    <input type="file" ref={fileInputRef} onChange={(e) => setArchivo(e.target.files?.[0] || null)} className="hidden" id="file-up" />
+                    <label htmlFor="file-up" className="cursor-pointer flex flex-col items-center">
+                      <Upload className="text-stone-400 mb-2" />
+                      <span>{archivo ? archivo.name : "Seleccionar"}</span>
+                    </label>
+                  </div>
+                )}
+              </motion.div>
             )}
           </AnimatePresence>
 
-          <div className="pt-8 border-t border-stone-100 flex flex-col gap-6">
-            {error && <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-2 text-red-500 bg-red-50 p-4 rounded-xl text-sm font-medium"><AlertCircle size={18} /> {error}</motion.div>}
-            <div className="flex items-center justify-between">
-              {step > 1 ? (<button type="button" onClick={prevStep} disabled={loading} className="flex items-center gap-2 text-stone-400 hover:text-stone-900 font-medium transition-colors"><ChevronLeft size={20} /> Anterior</button>) : <div />}
-              {step < 6 ? (
-                <button type="button" onClick={nextStep} className="flex items-center gap-2 bg-stone-900 text-white px-8 py-4 rounded-full font-medium hover:bg-stone-800 transition-all active:scale-95 shadow-xl shadow-stone-900/10">Siguiente <ChevronRight size={20} /></button>
-              ) : (
-                <button type="submit" disabled={loading} className="flex items-center gap-2 bg-stone-900 text-white px-10 py-4 rounded-full font-semibold hover:bg-stone-800 transition-all active:scale-95 shadow-xl shadow-stone-900/10 disabled:bg-stone-400">{loading ? 'Enviando...' : 'Enviar diagnóstico'} {!loading && <CheckCircle2 size={20} />}</button>
-              )}
-            </div>
+          <div className="flex justify-between items-center pt-10">
+            {step > 1 && <button type="button" onClick={prevStep} className="text-stone-400">Anterior</button>}
+            <button type={step === 6 ? "submit" : "button"} onClick={step === 6 ? undefined : nextStep} disabled={loading} className="bg-stone-900 text-white px-10 py-4 rounded-full font-bold ml-auto disabled:bg-stone-400">
+              {step === 6 ? (loading ? "Enviando..." : "Finalizar") : "Siguiente"}
+            </button>
           </div>
+          {error && <p className="text-red-500 text-center font-medium mt-4">{error}</p>}
         </form>
-
-        <footer className="mt-24 text-center">
-          <p className="text-xs text-stone-400 font-medium uppercase tracking-widest">© {new Date().getFullYear()} <span translate="no">Gerónimo adm</span> · Consultoría Administrativa</p>
-        </footer>
-      </main>
+      </div>
     </div>
   );
 }
